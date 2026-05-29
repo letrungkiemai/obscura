@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import { BlockNoteView } from '@blocknote/mantine';
@@ -6,11 +6,33 @@ import { useCreateBlockNote } from '@blocknote/react';
 import { initCrypto } from './crypto/sodium';
 import { AuthScreen } from './auth/AuthScreen';
 import { RecoveryKeyScreen } from './auth/RecoveryKeyScreen';
+import { createLocalNote } from './doc/localNote';
 import type { Session } from './auth/flows';
 
 /** The editor is its own component so the BlockNote hook only runs once logged in. */
 function Editor({ session, onLogout }: { session: Session; onLogout: () => void }) {
-  const editor = useCreateBlockNote();
+  // One Yjs-backed note per user, persisted locally. Stable for this mount.
+  const note = useMemo(() => createLocalNote(`obscura:${session.email}`), [session.email]);
+  const [synced, setSynced] = useState(false);
+
+  useEffect(() => {
+    note.persistence.whenSynced.then(() => setSynced(true));
+    return () => {
+      note.persistence.destroy();
+      note.doc.destroy();
+    };
+  }, [note]);
+
+  const editor = useCreateBlockNote({
+    collaboration: {
+      fragment: note.fragment,
+      user: { name: session.email, color: '#4f46e5' },
+      // No network provider yet (Phase 3). Without awareness, BlockNote still
+      // binds to the Yjs fragment but skips collaborative cursors.
+      provider: undefined,
+    },
+  });
+
   return (
     <div style={{ minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
       <header
@@ -24,6 +46,9 @@ function Editor({ session, onLogout }: { session: Session; onLogout: () => void 
       >
         <strong>Obscura</strong>
         <span style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: 14, color: '#666' }}>
+          <span title="Saved in this browser; survives reload">
+            {synced ? '💾 Saved locally' : '⏳ Restoring…'}
+          </span>
           <span title="Your data key is unlocked in memory">🔓 {session.email}</span>
           <button
             type="button"
