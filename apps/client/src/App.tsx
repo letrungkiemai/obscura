@@ -7,6 +7,7 @@ import { initCrypto } from './crypto/sodium';
 import { AuthScreen } from './auth/AuthScreen';
 import { RecoveryKeyScreen } from './auth/RecoveryKeyScreen';
 import { createLocalNote } from './doc/localNote';
+import { encryptLocalUpdates } from './doc/encryptedUpdates';
 import type { Session } from './auth/flows';
 
 /** The editor is its own component so the BlockNote hook only runs once logged in. */
@@ -17,11 +18,27 @@ function Editor({ session, onLogout }: { session: Session; onLogout: () => void 
 
   useEffect(() => {
     note.persistence.whenSynced.then(() => setSynced(true));
+
+    // Phase 3 part 1: encrypt every local change with the in-memory DEK before
+    // it can leave the client. The sink is a no-network placeholder for now;
+    // part 2 swaps it for the WebSocket send. We ignore the IndexedDB replay so
+    // a reload doesn't re-ship the entire doc as a "new" edit.
+    const stopEncrypting = encryptLocalUpdates(
+      note.doc,
+      session.dek,
+      (blob) => {
+        // eslint-disable-next-line no-console
+        console.debug(`[sync] encrypted update ready: ${blob.byteLength} bytes`);
+      },
+      { ignoreOrigins: [note.persistence] },
+    );
+
     return () => {
+      stopEncrypting();
       note.persistence.destroy();
       note.doc.destroy();
     };
-  }, [note]);
+  }, [note, session.dek]);
 
   const editor = useCreateBlockNote({
     collaboration: {

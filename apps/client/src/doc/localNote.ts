@@ -24,3 +24,4 @@ export function createLocalNote(dbKey: string): LocalNote {
   const fragment = doc.getXmlFragment(FRAGMENT_NAME);
   return { doc, fragment, persistence };
 }
+
