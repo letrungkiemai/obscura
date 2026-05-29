@@ -5,7 +5,8 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "noEmit": true,
-    "composite": false
+    "composite": false,
+     "types": ["node"]
   },
   "include": ["src"],
   "references": [{ "path": "../../packages/shared" }]
