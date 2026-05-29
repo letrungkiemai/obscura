@@ -85,10 +85,29 @@ export const DocUpdateSchema = z.object({
 });
 export type DocUpdate = z.infer<typeof DocUpdateSchema>;
 
+/**
+ * Until multi-document support lands (Phase 6) each user has a single note. This
+ * fixed (nil) UUID identifies it on the wire so the sync protocol is already
+ * doc-addressed and needs no changes when real per-document ids arrive.
+ */
+export const DEFAULT_DOC_ID = '00000000-0000-0000-0000-000000000000';
+
 // --- Sync WebSocket message envelope ---
+// All `encryptedUpdate`s are base64 (URL-safe, no padding) ciphertext; the
+// server appends and relays them as opaque bytes and can never decrypt them.
 export const SyncMessageSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('push'), docId: z.string().uuid(), encryptedUpdate: z.string() }),
-  z.object({ type: z.literal('pull'), docId: z.string().uuid(), fromSeq: z.number().int() }),
+  // client → server: a freshly-encrypted local Yjs update to append + relay.
+  z.object({
+    type: z.literal('push'),
+    docId: z.string().uuid(),
+    encryptedUpdate: z.string(),
+    originClient: z.string(),
+  }),
+  // client → server: send me everything after the last seq I have.
+  z.object({ type: z.literal('pull'), docId: z.string().uuid(), fromSeq: z.number().int().nonnegative() }),
+  // server → client: appended/relayed updates (pull response or live broadcast).
   z.object({ type: z.literal('updates'), docId: z.string().uuid(), updates: z.array(DocUpdateSchema) }),
+  // server → the pushing client: the seq assigned to its push.
+  z.object({ type: z.literal('ack'), docId: z.string().uuid(), seq: z.number().int().nonnegative() }),
 ]);
 export type SyncMessage = z.infer<typeof SyncMessageSchema>;

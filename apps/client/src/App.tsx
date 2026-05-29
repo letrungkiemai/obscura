@@ -6,8 +6,10 @@ import { useCreateBlockNote } from '@blocknote/react';
 import { initCrypto } from './crypto/sodium';
 import { AuthScreen } from './auth/AuthScreen';
 import { RecoveryKeyScreen } from './auth/RecoveryKeyScreen';
+import { DEFAULT_DOC_ID } from '@obscura/shared';
 import { createLocalNote } from './doc/localNote';
 import { encryptLocalUpdates } from './doc/encryptedUpdates';
+import { SyncClient } from './sync/syncClient';
 import type { Session } from './auth/flows';
 
 /** The editor is its own component so the BlockNote hook only runs once logged in. */
@@ -15,30 +17,45 @@ function Editor({ session, onLogout }: { session: Session; onLogout: () => void 
   // One Yjs-backed note per user, persisted locally. Stable for this mount.
   const note = useMemo(() => createLocalNote(`obscura:${session.email}`), [session.email]);
   const [synced, setSynced] = useState(false);
+  const [online, setOnline] = useState(false);
 
   useEffect(() => {
-    note.persistence.whenSynced.then(() => setSynced(true));
+    // Encrypted sync. The client streams locally-encrypted updates to the server
+    // and applies updates relayed from this user's other devices — the server
+    // only ever handles opaque ciphertext.
+    const sync = new SyncClient({
+      doc: note.doc,
+      dek: session.dek,
+      token: session.sessionToken,
+      docId: DEFAULT_DOC_ID,
+      clientId: crypto.randomUUID(),
+      cursorNamespace: session.email,
+      onStatus: setOnline,
+    });
 
     // Phase 3 part 1: encrypt every local change with the in-memory DEK before
-    // it can leave the client. The sink is a no-network placeholder for now;
-    // part 2 swaps it for the WebSocket send. We ignore the IndexedDB replay so
-    // a reload doesn't re-ship the entire doc as a "new" edit.
+    // it leaves the client. We ignore the IndexedDB replay so a reload doesn't
+    // re-ship the entire doc as a "new" edit.
     const stopEncrypting = encryptLocalUpdates(
       note.doc,
       session.dek,
-      (blob) => {
-        // eslint-disable-next-line no-console
-        console.debug(`[sync] encrypted update ready: ${blob.byteLength} bytes`);
-      },
+      (blob) => sync.pushEncrypted(blob),
       { ignoreOrigins: [note.persistence] },
     );
 
+    // Load local state first, then connect so the on-connect pull merges on top.
+    note.persistence.whenSynced.then(() => {
+      setSynced(true);
+      sync.connect();
+    });
+
     return () => {
       stopEncrypting();
+      sync.close();
       note.persistence.destroy();
       note.doc.destroy();
     };
-  }, [note, session.dek]);
+  }, [note, session]);
 
   const editor = useCreateBlockNote({
     collaboration: {
@@ -65,6 +82,9 @@ function Editor({ session, onLogout }: { session: Session; onLogout: () => void 
         <span style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: 14, color: '#666' }}>
           <span title="Saved in this browser; survives reload">
             {synced ? '💾 Saved locally' : '⏳ Restoring…'}
+          </span>
+          <span title="End-to-end encrypted sync with the server">
+            {online ? '🛰️ Synced' : '📡 Offline'}
           </span>
           <span title="Your data key is unlocked in memory">🔓 {session.email}</span>
           <button
