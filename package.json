@@ -1,0 +1,14 @@
+{
+  "name": "obscura",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "concurrently -n client,server -c cyan,green \"yarn workspace @obscura/client dev\" \"yarn workspace @obscura/server dev\"",
+    "build": "yarn workspace @obscura/shared build && concurrently \"yarn workspace @obscura/client build\" \"yarn workspace @obscura/server build\"",
+    "typecheck": "yarn workspaces run typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "typescript": "^5.5.0"
+  }
+}
