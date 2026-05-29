@@ -1,6 +1,6 @@
 /**
  * Standalone round-trip verification of the crypto/auth foundation.
- * Run with: tsx apps/client/src/crypto/verify.ts
+ * Run with: yarn tsx apps/client/src/crypto/verify.ts
  *
  * This simulates the server as a plain object (it only ever sees the payload)
  * and exercises: signup, fresh-device login, wrong-passphrase rejection,
