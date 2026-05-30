@@ -30,27 +30,27 @@ export function PageEditor({ session, pageId, title, onTitleChange }: PageEditor
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: theme.bg }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', padding: '0.5rem 1.5rem', fontSize: 13, color: theme.textMuted }}>
+      {/* <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', padding: '0.5rem 1.5rem', fontSize: 13, color: theme.textMuted }}>
         <span title="Saved in this browser; survives reload">{synced ? '💾 Saved locally' : '⏳ Restoring…'}</span>
         <span title="End-to-end encrypted sync">{online ? '🛰️ Synced' : '📡 Offline'}</span>
-      </div>
+      </div> */}
       <div style={{ maxWidth: '100%', width: '100%', margin: '0 auto', padding: '1rem 2rem 4rem', boxSizing: 'border-box' }}>
-        <input
-          value={title}
-          onChange={(e) => onTitleChange(e.target.value)}
-          placeholder="Untitled"
-          style={{
-            width: '100%',
-            border: 'none',
-            outline: 'none',
-            fontSize: 36,
-            fontWeight: 700,
-            fontFamily: fontStack,
-            marginBottom: '0.5rem',
-            color: theme.text,
-            background: 'transparent',
-          }}
-        />
+          <input
+            value={title}
+            onChange={(e) => onTitleChange(e.target.value)}
+            placeholder="Untitled"
+            style={{
+              width: '100%',
+              border: 'none',
+              outline: 'none',
+              fontSize: 36,
+              fontWeight: 700,
+              fontFamily: fontStack,
+              marginBottom: '0.5rem',
+              color: theme.text,
+              background: 'transparent',
+            }}
+          />
         <BlockNoteView editor={editor} theme="dark" />
       </div>
     </div>

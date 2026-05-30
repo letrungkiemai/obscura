@@ -38,7 +38,8 @@ export function AuthScreen({ onAuthed }: Props) {
   return (
     <div style={styles.wrap}>
       <form onSubmit={handleSubmit} style={styles.card}>
-        <h1 style={styles.title}>Obscura</h1>
+        <img src="/logo.png" alt="Obscura" style={styles.logo} />
+        {/* <h1 style={styles.title}>Obscura</h1> */}
         <p style={styles.subtitle}>
           {mode === 'login' ? 'Log in to your encrypted notes' : 'Create an encrypted account'}
         </p>
@@ -109,31 +110,33 @@ const styles: Record<string, React.CSSProperties> = {
     width: 360,
     padding: '2rem',
     background: theme.bgElevated,
-    border: '1px solid #e5e5e5',
+    border: `1px solid ${theme.border}`,
     borderRadius: 12,
     display: 'flex',
     flexDirection: 'column',
     gap: '0.75rem',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
   },
-  title: { margin: 0, fontSize: 28 },
-  subtitle: { margin: '0 0 0.5rem', color: '#666', fontSize: 14 },
-  label: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#444' },
+  logo: { width: '100%', height: '100%', display: 'block' },
+  title: { margin: 0, fontSize: 28, color: theme.text },
+  subtitle: { margin: '0 0 0.5rem', color: theme.textMuted, fontSize: 14 },
+  label: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: theme.textMuted },
   input: {
     padding: '0.6rem 0.7rem',
-    border: '1px solid #ddd',
+    border: `1px solid ${theme.border}`,
     borderRadius: 8,
     fontSize: 15,
-    background: '#333'
+    background: theme.bgInput,
+    color: theme.text,
   },
-  hint: { margin: 0, fontSize: 12, color: '#888', lineHeight: 1.4 },
-  error: { margin: 0, color: '#c0392b', fontSize: 13 },
+  hint: { margin: 0, fontSize: 12, color: theme.textFaint, lineHeight: 1.4 },
+  error: { margin: 0, color: theme.dangerText, fontSize: 13 },
   button: {
     marginTop: '0.5rem',
     padding: '0.7rem',
     border: 'none',
     borderRadius: 8,
-    background: '#111',
+    background: theme.accent,
     color: '#fff',
     fontSize: 15,
     cursor: 'pointer',
@@ -141,7 +144,7 @@ const styles: Record<string, React.CSSProperties> = {
   switch: {
     background: 'none',
     border: 'none',
-    color: '#555',
+    color: theme.textMuted,
     fontSize: 13,
     cursor: 'pointer',
     textDecoration: 'underline',

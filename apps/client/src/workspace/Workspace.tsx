@@ -79,7 +79,7 @@ export function Workspace({ session, onLogout }: { session: Session; onLogout: (
           borderBottom: `1px solid ${theme.border}`,
         }}
       >
-        <strong>Obscura</strong>
+        <img src="/logo.png" alt="Obscura" style={{ height: 28, width: 'auto', display: 'block' }} />
         <span style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: 14, color: theme.textMuted }}>
           <button
             type="button"
@@ -100,7 +100,7 @@ export function Workspace({ session, onLogout }: { session: Session; onLogout: (
           >
             🔍 Search <kbd style={{ fontSize: 11, color: theme.textFaint }}>⌘K</kbd>
           </button>
-          <span title="Workspace sync status">{online ? '🛰️ Synced' : '📡 Offline'}</span>
+          {/* <span title="Workspace sync status">{online ? '🛰️ Synced' : '📡 Offline'}</span> */}
           <span title="Your data key is unlocked in memory">🔓 {session.email}</span>
           <button
             type="button"
