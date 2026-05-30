@@ -15,6 +15,8 @@ export interface SidebarCallbacks {
 interface SidebarProps extends SidebarCallbacks {
   tree: PageTreeNode[];
   currentPageId: string | null;
+  /** On mobile the sidebar is the whole screen rather than a fixed-width column. */
+  fullWidth?: boolean;
 }
 
 const iconBtn: React.CSSProperties = {
@@ -27,7 +29,7 @@ const iconBtn: React.CSSProperties = {
   color: theme.textMuted,
 };
 
-export function Sidebar({ tree, currentPageId, ...cb }: SidebarProps) {
+export function Sidebar({ tree, currentPageId, fullWidth = false, ...cb }: SidebarProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const toggle = (id: string) =>
@@ -40,8 +42,8 @@ export function Sidebar({ tree, currentPageId, ...cb }: SidebarProps) {
   return (
     <aside
       style={{
-        width: 260,
-        borderRight: `1px solid ${theme.border}`,
+        width: fullWidth ? '100%' : 260,
+        borderRight: fullWidth ? 'none' : `1px solid ${theme.border}`,
         height: '100%',
         overflowY: 'auto',
         background: theme.bgElevated,

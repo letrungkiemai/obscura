@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar';
 import { PageEditor } from '../editor/PageEditor';
 import { SearchModal } from '../search/SearchModal';
 import { theme, fontStack } from '../theme';
+import { useIsMobile } from '../useMediaQuery';
 import {
   WORKSPACE_DOC_ID,
   createPage,
@@ -43,6 +44,15 @@ export function Workspace({ session, onLogout }: { session: Session; onLogout: (
   const tree = useWorkspaceTree(doc);
   const [currentPageId, setCurrentPageId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const isMobile = useIsMobile();
+  // On mobile a single pane is visible at a time: the page list, or one page.
+  const [mobileView, setMobileView] = useState<'sidebar' | 'page'>('sidebar');
+
+  // Selecting a page (sidebar tap, search, or create) reveals it on mobile.
+  const openPage = (id: string | null) => {
+    setCurrentPageId(id);
+    if (id) setMobileView('page');
+  };
 
   const ids = useMemo(() => flattenIds(tree), [tree]);
   const flatPages = useMemo(() => flattenPages(tree), [tree]);
@@ -80,7 +90,7 @@ export function Workspace({ session, onLogout }: { session: Session; onLogout: (
         }}
       >
         <img src="/logo.png" alt="Obscura" style={{ height: 28, width: 'auto', display: 'block' }} />
-        <span style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: 14, color: theme.textMuted }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.5rem' : '1rem', fontSize: 14, color: theme.textMuted }}>
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
@@ -98,62 +108,91 @@ export function Workspace({ session, onLogout }: { session: Session; onLogout: (
               fontSize: 13,
             }}
           >
-            🔍 Search <kbd style={{ fontSize: 11, color: theme.textFaint }}>⌘K</kbd>
+            🔍{!isMobile && <> Search <kbd style={{ fontSize: 11, color: theme.textFaint }}>⌘K</kbd></>}
           </button>
           {/* <span title="Workspace sync status">{online ? '🛰️ Synced' : '📡 Offline'}</span> */}
-          <span title="Your data key is unlocked in memory">🔓 {session.email}</span>
+          {!isMobile && <span title="Your data key is unlocked in memory">🔓 {session.email}</span>}
           <button
             type="button"
             onClick={onLogout}
+            title="Log out"
             style={{ border: `1px solid ${theme.border}`, borderRadius: 6, padding: '0.3rem 0.7rem', cursor: 'pointer', background: theme.bgInput, color: theme.text }}
           >
-            Log out
+            {isMobile ? '⏻' : 'Log out'}
           </button>
         </span>
       </header>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <Sidebar
-          tree={tree}
-          currentPageId={currentPageId}
-          onSelect={setCurrentPageId}
-          onCreate={(parentId) => setCurrentPageId(createPage(doc, parentId))}
-          onRename={(id, title) => renamePage(doc, id, title)}
-          onDelete={(id) => deletePage(doc, id)}
-          onMove={(id, dir) => movePage(doc, id, dir)}
-          onIndent={(id) => indentPage(doc, id)}
-          onOutdent={(id) => outdentPage(doc, id)}
-        />
+        {/* On mobile only one pane shows; on desktop both sit side by side. */}
+        {(!isMobile || mobileView === 'sidebar') && (
+          <Sidebar
+            tree={tree}
+            currentPageId={currentPageId}
+            fullWidth={isMobile}
+            onSelect={openPage}
+            onCreate={(parentId) => openPage(createPage(doc, parentId))}
+            onRename={(id, title) => renamePage(doc, id, title)}
+            onDelete={(id) => deletePage(doc, id)}
+            onMove={(id, dir) => movePage(doc, id, dir)}
+            onIndent={(id) => indentPage(doc, id)}
+            onOutdent={(id) => outdentPage(doc, id)}
+          />
+        )}
 
-        <main style={{ flex: 1, overflowY: 'auto', display: 'flex', background: theme.bg }}>
-          {currentPageId ? (
-            <PageEditor
-              key={currentPageId}
-              session={session}
-              pageId={currentPageId}
-              title={currentTitle}
-              onTitleChange={(title) => renamePage(doc, currentPageId, title)}
-            />
-          ) : (
-            <div style={{ margin: 'auto', textAlign: 'center', color: theme.textMuted }}>
-              <p style={{ fontSize: 16 }}>No page open.</p>
+        {(!isMobile || mobileView === 'page') && (
+          <main style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: theme.bg, minWidth: 0 }}>
+            {isMobile && (
               <button
                 type="button"
-                onClick={() => setCurrentPageId(createPage(doc, null))}
-                style={{ border: `1px solid ${theme.border}`, borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer', background: theme.bgInput, color: theme.text }}
+                onClick={() => setMobileView('sidebar')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  alignSelf: 'flex-start',
+                  margin: '0.6rem 0.6rem 0',
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 6,
+                  padding: '0.35rem 0.7rem',
+                  cursor: 'pointer',
+                  background: theme.bgInput,
+                  color: theme.text,
+                  fontSize: 13,
+                }}
               >
-                ＋ Create your first page
+                ← Pages
               </button>
-            </div>
-          )}
-        </main>
+            )}
+            {currentPageId ? (
+              <PageEditor
+                key={currentPageId}
+                session={session}
+                pageId={currentPageId}
+                title={currentTitle}
+                onTitleChange={(title) => renamePage(doc, currentPageId, title)}
+              />
+            ) : (
+              <div style={{ margin: 'auto', textAlign: 'center', color: theme.textMuted }}>
+                <p style={{ fontSize: 16 }}>No page open.</p>
+                <button
+                  type="button"
+                  onClick={() => openPage(createPage(doc, null))}
+                  style={{ border: `1px solid ${theme.border}`, borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer', background: theme.bgInput, color: theme.text }}
+                >
+                  ＋ Create your first page
+                </button>
+              </div>
+            )}
+          </main>
+        )}
       </div>
 
       {searchOpen && (
         <SearchModal
           email={session.email}
           pages={flatPages}
-          onSelect={setCurrentPageId}
+          onSelect={openPage}
           onClose={() => setSearchOpen(false)}
         />
       )}
