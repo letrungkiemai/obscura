@@ -1,7 +1,8 @@
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 import { SyncMessageSchema } from '@obscura/shared';
 import type { SyncMessage } from '@obscura/shared';
 import { toB64, fromB64 } from '../crypto/sodium';
+import { aeadEncrypt } from '../crypto/keys';
 import { applyEncryptedUpdate } from '../doc/encryptedUpdates';
 
 export interface SyncClientOptions {
@@ -23,6 +24,20 @@ export interface SyncClientOptions {
   loadCursor: () => Promise<number>;
   /** Persist the new high-water mark next to the doc. */
   saveCursor: (seq: number) => void;
+  /**
+   * Read the persisted outbox — encrypted updates produced locally that the
+   * server has not acked yet. Stored next to the doc so edits made offline
+   * survive a reload and still get pushed on reconnect. Returns [] when absent.
+   */
+  loadOutbox: () => Promise<string[]>;
+  /** Persist the current outbox next to the doc. */
+  saveOutbox: (blobs: string[]) => void;
+  /**
+   * Upload an encrypted full-state snapshot once this many new seqs have
+   * accumulated since the last one, letting the server prune older updates so a
+   * fresh device doesn't replay the whole history. Defaults to 200.
+   */
+  snapshotInterval?: number;
   onStatus?: (connected: boolean) => void;
 }
 
@@ -31,21 +46,48 @@ export interface SyncClientOptions {
  * to the server, applies updates relayed from the user's other devices, and on
  * every (re)connect pulls just the updates it's missing since its last seq.
  *
+ * Delivery is at-least-once: every local update is appended to a persistent
+ * outbox, (re)sent on connect, and removed only when the server acks it. A blob
+ * that's re-sent because its ack was lost is appended again server-side, but
+ * decrypting+applying it elsewhere is an idempotent Yjs no-op — so duplicates
+ * are harmless and offline edits are never lost.
+ *
  * The DEK never leaves the client: we send/receive only opaque ciphertext.
  */
 export class SyncClient {
   private ws: WebSocket | null = null;
   private closed = false;
   private connecting = false;
-  /** Encrypted-update JSON messages queued while the socket is down. */
+  /** Encrypted blobs (base64) pushed but not yet acked, oldest first. */
   private outbox: string[] = [];
-  /** Last seq applied. Loaded from persistent storage on first connect. */
+  /** Last seq applied. */
   private lastSeq = 0;
-  private cursorLoaded = false;
+  /** Seq covered by the most recent snapshot we sent or restored from. */
+  private lastSnapshotSeq = 0;
+  private readonly snapshotInterval: number;
+  /** Resolves once the persisted cursor + outbox have been loaded. */
+  private readonly ready: Promise<void>;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelayMs = 1000;
 
-  constructor(private readonly opts: SyncClientOptions) {}
+  constructor(private readonly opts: SyncClientOptions) {
+    this.snapshotInterval = opts.snapshotInterval ?? 200;
+    this.ready = this.init();
+  }
+
+  private async init(): Promise<void> {
+    try {
+      this.lastSeq = await this.opts.loadCursor();
+    } catch {
+      this.lastSeq = 0; // unreadable cursor → safe full pull
+    }
+    try {
+      // Persisted (prior-session) blobs are the oldest unacked; they go first.
+      this.outbox = await this.opts.loadOutbox();
+    } catch {
+      this.outbox = [];
+    }
+  }
 
   private advanceCursor(seq: number): void {
     if (seq <= this.lastSeq) return;
@@ -60,16 +102,7 @@ export class SyncClient {
     if (this.closed || this.ws || this.connecting) return;
     this.connecting = true;
     try {
-      // Load the persisted cursor once, before the first pull, so we ask only
-      // for what we're missing. Reconnects reuse the in-memory value.
-      if (!this.cursorLoaded) {
-        try {
-          this.lastSeq = await this.opts.loadCursor();
-        } catch {
-          this.lastSeq = 0; // unreadable cursor → safe full pull
-        }
-        this.cursorLoaded = true;
-      }
+      await this.ready; // cursor + outbox loaded before we pull / flush
       if (this.closed || this.ws) return; // state may have changed during await
 
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -86,9 +119,9 @@ export class SyncClient {
     ws.onopen = () => {
       this.reconnectDelayMs = 1000;
       this.opts.onStatus?.(true);
-      // Ask for everything we missed, then flush edits queued while offline.
-      this.send({ type: 'pull', docId: this.opts.docId, fromSeq: this.lastSeq });
-      for (const queued of this.outbox.splice(0)) ws.send(queued);
+      // Pull what we missed, then (re)send every still-unacked local update.
+      this.sendIfOpen({ type: 'pull', docId: this.opts.docId, fromSeq: this.lastSeq });
+      for (const blob of this.outbox) this.sendPush(blob);
     };
 
     ws.onmessage = (evt) => {
@@ -114,6 +147,15 @@ export class SyncClient {
   }
 
   private handle(msg: SyncMessage): void {
+    if (msg.type === 'snapshot') {
+      // Restore from a compaction snapshot (sent before the tail on pull when we
+      // were behind it). It's a full-state Yjs update, so applying it is a merge
+      // — safe whether our doc is empty or partially populated.
+      applyEncryptedUpdate(this.opts.doc, this.opts.dek, fromB64(msg.encryptedSnapshot));
+      if (msg.upToSeq > this.lastSnapshotSeq) this.lastSnapshotSeq = msg.upToSeq;
+      this.advanceCursor(msg.upToSeq);
+      return;
+    }
     if (msg.type === 'updates') {
       for (const u of msg.updates) {
         // Decrypt + merge. REMOTE_ORIGIN (inside applyEncryptedUpdate) keeps the
@@ -122,32 +164,69 @@ export class SyncClient {
         applyEncryptedUpdate(this.opts.doc, this.opts.dek, fromB64(u.encryptedUpdate));
         this.advanceCursor(u.seq);
       }
+      this.maybeCompact();
       return;
     }
     if (msg.type === 'ack') {
       this.advanceCursor(msg.seq);
+      // Acks arrive in push order over a connection, so the front of the outbox
+      // is the one being acked — drop it. (Worst case after an odd reconnect we
+      // drop a blob that gets re-sent anyway; idempotency keeps that safe.)
+      if (this.outbox.length > 0) {
+        this.outbox.shift();
+        this.opts.saveOutbox(this.outbox);
+      }
+      this.maybeCompact();
       return;
     }
     // 'push' / 'pull' are client→server only.
   }
 
-  /** Encrypt-then-send a local Yjs update. Wired to the encryptLocalUpdates sink. */
+  /**
+   * Periodically upload an encrypted full-state snapshot so the server can prune
+   * the updates it covers. Tagged with the highest seq we've applied; the doc
+   * always contains everything up to that seq (plus, harmlessly, any not-yet-
+   * acked local edits), so the snapshot is a safe superset to prune against.
+   */
+  private maybeCompact(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.lastSeq - this.lastSnapshotSeq < this.snapshotInterval) return;
+    const upToSeq = this.lastSeq;
+    const snapshot = aeadEncrypt(Y.encodeStateAsUpdate(this.opts.doc), this.opts.dek);
+    this.lastSnapshotSeq = upToSeq; // set before send so we don't re-trigger
+    this.sendIfOpen({
+      type: 'snapshot',
+      docId: this.opts.docId,
+      encryptedSnapshot: toB64(snapshot),
+      upToSeq,
+    });
+  }
+
+  /** Encrypt-then-queue a local Yjs update. Wired to the encryptLocalUpdates sink. */
   pushEncrypted(blob: Uint8Array): void {
-    this.send({
+    const b64 = toB64(blob);
+    // Defer past init so we never persist on top of an outbox we haven't loaded.
+    void this.ready.then(() => {
+      this.outbox.push(b64);
+      this.opts.saveOutbox(this.outbox);
+      this.sendPush(b64); // sends now if online; otherwise it waits in the outbox
+    });
+  }
+
+  private sendPush(blob: string): void {
+    this.sendIfOpen({
       type: 'push',
       docId: this.opts.docId,
-      encryptedUpdate: toB64(blob),
+      encryptedUpdate: blob,
       originClient: this.opts.clientId,
     });
   }
 
-  private send(msg: SyncMessage): void {
-    const payload = JSON.stringify(msg);
+  /** Send only if the socket is open; otherwise drop the wire message (the
+   * durable state lives in the outbox + cursor, which drive the next connect). */
+  private sendIfOpen(msg: SyncMessage): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(payload);
-    } else {
-      // Queue until the socket (re)opens so brief drops don't lose edits.
-      this.outbox.push(payload);
+      this.ws.send(JSON.stringify(msg));
     }
   }
 

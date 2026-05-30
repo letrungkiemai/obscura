@@ -94,7 +94,27 @@ async function main() {
     const expected = Array.from({ length: before + 10 }, (_, i) => i + 1);
     assert(JSON.stringify(finalSeqs) === JSON.stringify(expected), `10 concurrent appends → contiguous seq (got ${finalSeqs})`);
 
-    console.log('OK — accounts round-trip + update, monotonic seq, incremental listSince, bytea fidelity, isolation, and concurrent-append seq integrity all verified.');
+    // --- snapshots: store prunes covered updates, numbering continues ---
+    const total = (await updates.listSince('alice@example.com', docId, 0)).length; // before+10
+    const cut = 5;
+    const snap = b64(80);
+    await updates.saveSnapshot('alice@example.com', docId, snap, cut);
+    const latest = await updates.getLatestSnapshot('alice@example.com', docId);
+    assert(latest?.upToSeq === cut && latest.encryptedSnapshot === snap, 'latest snapshot round-trips (blob + upToSeq)');
+    const afterPrune = await updates.listSince('alice@example.com', docId, 0);
+    assert(afterPrune.length === total - cut, `updates ≤ ${cut} pruned (kept ${afterPrune.length}, expected ${total - cut})`);
+    assert(afterPrune.every((u) => u.seq > cut), 'only updates after the snapshot remain');
+
+    await updates.saveSnapshot('alice@example.com', docId, b64(80), 3); // stale → ignored
+    assert((await updates.getLatestSnapshot('alice@example.com', docId))!.upToSeq === cut, 'stale snapshot ignored');
+
+    const next = await updates.append('alice@example.com', docId, b64(20), 'devA');
+    assert(next.seq === total + 1, `append after prune continues numbering (got ${next.seq}, expected ${total + 1})`);
+
+    // isolation: bob has no snapshot
+    assert((await updates.getLatestSnapshot('bob@example.com', docId)) === null, "bob has no snapshot of his own");
+
+    console.log('OK — accounts round-trip + update, monotonic seq, incremental listSince, bytea fidelity, isolation, concurrent-append integrity, and snapshot prune/restore all verified.');
   } finally {
     await db.destroy();
     // Drop the scratch db (terminate any lingering backends first).

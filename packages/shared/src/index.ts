@@ -109,5 +109,16 @@ export const SyncMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('updates'), docId: z.string().uuid(), updates: z.array(DocUpdateSchema) }),
   // server → the pushing client: the seq assigned to its push.
   z.object({ type: z.literal('ack'), docId: z.string().uuid(), seq: z.number().int().nonnegative() }),
+  // Compaction. Same shape both ways:
+  //   client → server: "here's a full encrypted snapshot of the doc as of
+  //                      upToSeq; store it and prune updates ≤ upToSeq."
+  //   server → client: "you're behind a snapshot; restore from this, then I'll
+  //                      send the tail of updates after upToSeq."
+  z.object({
+    type: z.literal('snapshot'),
+    docId: z.string().uuid(),
+    encryptedSnapshot: z.string(),
+    upToSeq: z.number().int().nonnegative(),
+  }),
 ]);
 export type SyncMessage = z.infer<typeof SyncMessageSchema>;

@@ -29,12 +29,15 @@ interface DocumentsTable {
   updated_at: Generated<Date>;
 }
 
+// bytea: pg returns a Buffer on read; accept any Uint8Array (incl. Buffer) on write.
+type Bytea = ColumnType<Buffer, Uint8Array, Uint8Array>;
+
 interface DocUpdatesTable {
   id: Generated<string>;
   owner_id: string;
   doc_id: string;
   seq: number; // monotonic per (owner_id, doc_id)
-  encrypted_update: Buffer; // bytea — opaque XChaCha20-Poly1305 ciphertext
+  encrypted_update: Bytea; // opaque XChaCha20-Poly1305 ciphertext
   origin_client: string;
   created_at: Generated<Date>;
 }
@@ -43,7 +46,7 @@ interface SnapshotsTable {
   id: Generated<string>;
   owner_id: string;
   doc_id: string;
-  encrypted_snapshot: Buffer; // bytea
+  encrypted_snapshot: Bytea;
   up_to_seq: number;
   created_at: Generated<Date>;
 }

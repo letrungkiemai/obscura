@@ -23,11 +23,13 @@ function Editor({ session, onLogout }: { session: Session; onLogout: () => void 
     // Encrypted sync. The client streams locally-encrypted updates to the server
     // and applies updates relayed from this user's other devices — the server
     // only ever handles opaque ciphertext.
-    // The incremental-pull cursor lives in the note's OWN IndexedDB (the
-    // 'custom' store y-indexeddb exposes), so it shares the doc's exact storage
-    // lifecycle — wiping local data resets the cursor too, forcing a clean
+    // The incremental-pull cursor AND the offline outbox both live in the note's
+    // OWN IndexedDB (the 'custom' store y-indexeddb exposes), so they share the
+    // doc's exact storage lifecycle: edits made offline survive a reload and
+    // still get pushed, and wiping local data resets the cursor for a clean
     // full re-pull instead of silently skipping updates we no longer have.
     const cursorKey = `lastSeq:${DEFAULT_DOC_ID}`;
+    const outboxKey = `outbox:${DEFAULT_DOC_ID}`;
     const sync = new SyncClient({
       doc: note.doc,
       dek: session.dek,
@@ -40,6 +42,20 @@ function Editor({ session, onLogout }: { session: Session; onLogout: () => void 
       },
       saveCursor: (seq) => {
         void note.persistence.set(cursorKey, seq);
+      },
+      loadOutbox: async () => {
+        // Stored as a JSON string (y-indexeddb's set() takes scalars, not arrays).
+        const v = await note.persistence.get(outboxKey);
+        if (typeof v !== 'string') return [];
+        try {
+          const parsed = JSON.parse(v);
+          return Array.isArray(parsed) ? (parsed as string[]) : [];
+        } catch {
+          return [];
+        }
+      },
+      saveOutbox: (blobs) => {
+        void note.persistence.set(outboxKey, JSON.stringify(blobs));
       },
       onStatus: setOnline,
     });

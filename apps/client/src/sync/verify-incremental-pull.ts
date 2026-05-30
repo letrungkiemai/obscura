@@ -85,6 +85,8 @@ async function main() {
     saveCursor: (seq) => {
       savedCursor = seq;
     },
+    loadOutbox: async () => [],
+    saveOutbox: () => {},
   });
 
   // --- first connect: must pull fromSeq = 7 (only newer), not 0 ---

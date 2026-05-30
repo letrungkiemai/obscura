@@ -22,8 +22,11 @@ function send(ws: WSContext, message: SyncMessage): void {
  * append-and-relay layer over opaque ciphertext:
  *   - push  → append to the user's log, ack the assigned seq to the sender,
  *             and broadcast the stored update to the user's other devices.
- *   - pull  → reply with every update after the client's last seq, so a
+ *   - pull  → reply with every update after the client's last seq (restoring
+ *             from a snapshot first if the client is behind one), so a
  *             (re)connecting device rebuilds its doc from what it's missing.
+ *   - snapshot → store a client's encrypted compaction snapshot and prune the
+ *             updates it now covers.
  */
 export function registerSyncRoutes(app: Hono, deps: SyncDeps): void {
   const { upgradeWebSocket, sessions, updates, hub } = deps;
@@ -74,8 +77,27 @@ export function registerSyncRoutes(app: Hono, deps: SyncDeps): void {
           }
 
           if (msg.type === 'pull') {
-            const missing = await updates.listSince(email, msg.docId, msg.fromSeq);
+            // If a snapshot covers ground the client hasn't got, restore from it
+            // first (the pruned updates ≤ upToSeq live only in the snapshot now),
+            // then send the tail. Otherwise just send the updates it's missing.
+            const snapshot = await updates.getLatestSnapshot(email, msg.docId);
+            const from = snapshot && snapshot.upToSeq > msg.fromSeq ? snapshot.upToSeq : msg.fromSeq;
+            if (snapshot && snapshot.upToSeq > msg.fromSeq) {
+              send(ws, {
+                type: 'snapshot',
+                docId: msg.docId,
+                encryptedSnapshot: snapshot.encryptedSnapshot,
+                upToSeq: snapshot.upToSeq,
+              });
+            }
+            const missing = await updates.listSince(email, msg.docId, from);
             send(ws, { type: 'updates', docId: msg.docId, updates: missing });
+            return;
+          }
+
+          if (msg.type === 'snapshot') {
+            // Client-uploaded compaction: store it and prune covered updates.
+            await updates.saveSnapshot(email, msg.docId, msg.encryptedSnapshot, msg.upToSeq);
             return;
           }
 
