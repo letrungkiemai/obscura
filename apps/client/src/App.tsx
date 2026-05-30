@@ -17,7 +17,7 @@ export default function App() {
 
   if (!ready) {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', fontFamily: 'system-ui' }}>
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', fontFamily: 'system-ui', color: '#9a9aa2' }}>
         Loading…
       </div>
     );

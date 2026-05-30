@@ -4,6 +4,7 @@ import '@blocknote/mantine/style.css';
 import { BlockNoteView } from '@blocknote/mantine';
 import { useCreateBlockNote } from '@blocknote/react';
 import { useSyncedDoc } from '../sync/useSyncedDoc';
+import { theme, fontStack } from '../theme';
 import type { Session } from '../auth/flows';
 
 interface PageEditorProps {
@@ -24,16 +25,16 @@ export function PageEditor({ session, pageId, title, onTitleChange }: PageEditor
   // BlockNote binds to a named fragment of the page's Yjs doc — the CRDT body.
   const fragment = useMemo(() => doc.getXmlFragment('document-store'), [doc]);
   const editor = useCreateBlockNote({
-    collaboration: { fragment, user: { name: session.email, color: '#4f46e5' }, provider: undefined },
+    collaboration: { fragment, user: { name: session.email, color: theme.accent }, provider: undefined },
   });
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', padding: '0.5rem 1.5rem', fontSize: 13, color: '#888' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: theme.bg }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', padding: '0.5rem 1.5rem', fontSize: 13, color: theme.textMuted }}>
         <span title="Saved in this browser; survives reload">{synced ? '💾 Saved locally' : '⏳ Restoring…'}</span>
         <span title="End-to-end encrypted sync">{online ? '🛰️ Synced' : '📡 Offline'}</span>
       </div>
-      <div style={{ maxWidth: 800, width: '100%', margin: '0 auto', padding: '1rem 2rem 4rem', boxSizing: 'border-box' }}>
+      <div style={{ maxWidth: '100%', width: '100%', margin: '0 auto', padding: '1rem 2rem 4rem', boxSizing: 'border-box' }}>
         <input
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}
@@ -44,12 +45,13 @@ export function PageEditor({ session, pageId, title, onTitleChange }: PageEditor
             outline: 'none',
             fontSize: 36,
             fontWeight: 700,
-            fontFamily: 'Inter, system-ui, sans-serif',
+            fontFamily: fontStack,
             marginBottom: '0.5rem',
-            color: '#1a1a1a',
+            color: theme.text,
+            background: 'transparent',
           }}
         />
-        <BlockNoteView editor={editor} />
+        <BlockNoteView editor={editor} theme="dark" />
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { signupFlow, loginFlow, type Session } from './flows';
+import { theme } from '../theme';
 
 interface Props {
   /** Called on success. recoveryKey is present only for fresh signups. */
@@ -101,13 +102,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#fafafa',
+    background: theme.bg,
     fontFamily: 'Inter, system-ui, sans-serif',
   },
   card: {
     width: 360,
     padding: '2rem',
-    background: '#fff',
+    background: theme.bgElevated,
     border: '1px solid #e5e5e5',
     borderRadius: 12,
     display: 'flex',
@@ -123,6 +124,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #ddd',
     borderRadius: 8,
     fontSize: 15,
+    background: '#333'
   },
   hint: { margin: 0, fontSize: 12, color: '#888', lineHeight: 1.4 },
   error: { margin: 0, color: '#c0392b', fontSize: 13 },

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { theme } from '../theme';
 
 interface Props {
   recoveryKey: string;
@@ -59,13 +60,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#fafafa',
+    background: theme.bg,
     fontFamily: 'Inter, system-ui, sans-serif',
   },
   card: {
     width: 440,
     padding: '2rem',
-    background: '#fff',
+    background: theme.bgElevated,
     border: '1px solid #e5e5e5',
     borderRadius: 12,
     display: 'flex',
@@ -77,7 +78,7 @@ const styles: Record<string, React.CSSProperties> = {
   body: { margin: 0, color: '#555', fontSize: 14, lineHeight: 1.5 },
   keyBox: {
     padding: '1rem',
-    background: '#f5f5f5',
+    background: '#333',
     border: '1px dashed #ccc',
     borderRadius: 8,
     wordBreak: 'break-all',
@@ -87,7 +88,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0.5rem',
     border: '1px solid #ddd',
     borderRadius: 8,
-    background: '#fff',
+    background: '#333',
     cursor: 'pointer',
     fontSize: 14,
   },

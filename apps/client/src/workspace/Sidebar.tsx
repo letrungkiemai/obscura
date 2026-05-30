@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { PageTreeNode } from './workspaceDoc';
+import { theme } from '../theme';
 
 export interface SidebarCallbacks {
   onSelect: (id: string) => void;
@@ -23,7 +24,7 @@ const iconBtn: React.CSSProperties = {
   padding: '0 3px',
   fontSize: 12,
   lineHeight: 1,
-  color: '#666',
+  color: theme.textMuted,
 };
 
 export function Sidebar({ tree, currentPageId, ...cb }: SidebarProps) {
@@ -40,16 +41,16 @@ export function Sidebar({ tree, currentPageId, ...cb }: SidebarProps) {
     <aside
       style={{
         width: 260,
-        borderRight: '1px solid #eee',
+        borderRight: `1px solid ${theme.border}`,
         height: '100%',
         overflowY: 'auto',
-        background: '#fafafa',
+        background: theme.bgElevated,
         display: 'flex',
         flexDirection: 'column',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 0.75rem 0.5rem' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: '#888', letterSpacing: 0.4 }}>PAGES</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: theme.textFaint, letterSpacing: 0.4 }}>PAGES</span>
         <button type="button" title="New page" onClick={() => cb.onCreate(null)} style={{ ...iconBtn, fontSize: 16 }}>
           ＋
         </button>
@@ -57,7 +58,7 @@ export function Sidebar({ tree, currentPageId, ...cb }: SidebarProps) {
 
       <div style={{ flex: 1 }}>
         {tree.length === 0 ? (
-          <p style={{ color: '#aaa', fontSize: 13, padding: '0.5rem 0.75rem' }}>No pages yet.</p>
+          <p style={{ color: theme.textFaint, fontSize: 13, padding: '0.5rem 0.75rem' }}>No pages yet.</p>
         ) : (
           tree.map((node) => (
             <Row
@@ -110,9 +111,9 @@ function Row({ node, currentPageId, collapsed, onToggle, ...cb }: RowProps) {
           padding: '3px 8px',
           paddingLeft: 8 + node.depth * 14,
           cursor: 'pointer',
-          background: isCurrent ? '#e8e8fd' : hover ? '#f0f0f0' : 'transparent',
+          background: isCurrent ? theme.bgActive : hover ? theme.bgHover : 'transparent',
           fontSize: 14,
-          color: '#222',
+          color: theme.text,
           userSelect: 'none',
         }}
       >
@@ -139,7 +140,7 @@ function Row({ node, currentPageId, collapsed, onToggle, ...cb }: RowProps) {
               if (e.key === 'Enter') commitRename();
               if (e.key === 'Escape') setRenaming(false);
             }}
-            style={{ flex: 1, fontSize: 14, border: '1px solid #bbb', borderRadius: 4, padding: '1px 4px' }}
+            style={{ flex: 1, fontSize: 14, border: `1px solid ${theme.borderStrong}`, borderRadius: 4, padding: '1px 4px', background: theme.bgInput, color: theme.text }}
           />
         ) : (
           <span

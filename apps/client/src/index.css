@@ -1,0 +1,77 @@
+/* Global dark theme. Element-level defaults; component tokens live in theme.ts. */
+:root {
+  color-scheme: dark;
+  --bg: #1a1a1d;
+  --bg-elevated: #242428;
+  --bg-input: #2a2a30;
+  --border: #34343a;
+  --text: #e6e6e8;
+  --text-muted: #9a9aa2;
+  --accent: #6366f1;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+input,
+textarea,
+button,
+select {
+  font-family: inherit;
+}
+
+/* Form controls default to dark unless a component overrides them. */
+input,
+textarea {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.4);
+}
+
+/* Dark scrollbars */
+* {
+  scrollbar-color: #3a3a42 transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #3a3a42;
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #4a4a54;
+}
+
+/* BlockNote: let the editor surface blend into the dark page. */
+.bn-container,
+.bn-editor {
+  background: transparent !important;
+}
