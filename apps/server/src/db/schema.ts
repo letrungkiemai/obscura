@@ -12,6 +12,9 @@ interface UsersTable {
   id: Generated<string>;
   email: string;
   auth_verifier_hash: string;
+  // Hash of the recovery verifier; demanded as proof to authorize /reset.
+  // Nullable: accounts created before this column existed have no value.
+  recovery_verifier_hash: string | null;
   kdf_salt: string;
   // jsonb: read back as a parsed object, written as a JSON string (see stores).
   kdf_params: ColumnType<KdfParams, string, string>;

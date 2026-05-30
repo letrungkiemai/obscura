@@ -4,6 +4,7 @@ import {
   defaultKdfParams,
   deriveAuthVerifier,
   deriveMasterKey,
+  deriveRecoveryVerifier,
   deriveRootKey,
   genDek,
   genRecoveryKey,
@@ -43,6 +44,7 @@ export function registerAccount(email: string, passphrase: string): Registration
 
   const { recoveryKey, recoveryKeyBytes } = genRecoveryKey();
   const wrappedDekRecovery = wrapKey(dek, recoveryKeyBytes);
+  const recoveryVerifier = deriveRecoveryVerifier(recoveryKeyBytes);
 
   return {
     keys: { masterKey, dek },
@@ -52,6 +54,7 @@ export function registerAccount(email: string, passphrase: string): Registration
       kdfSalt: toB64(salt),
       kdfParams: params,
       authVerifier: toB64(authVerifier),
+      recoveryVerifier: toB64(recoveryVerifier),
       wrappedDek: toB64(wrappedDek),
       wrappedDekRecovery: toB64(wrappedDekRecovery),
     },
@@ -87,14 +90,16 @@ export function unlockWithRecoveryKey(recoveryKey: string, wrappedDekRecoveryB64
 /**
  * Rotate to a new passphrase while keeping the same DEK (so existing notes stay
  * decryptable). Re-wraps the DEK under a fresh master key; the recovery wrapping
- * is preserved unchanged.
+ * is preserved unchanged. This is the logged-in "change passphrase" path; it
+ * holds no recovery key, so it carries no recovery proof (a future rotation
+ * endpoint would authorize it with the active session, not via /reset).
  */
 export function rotatePassphrase(
   email: string,
   newPassphrase: string,
   dek: Uint8Array,
   existingWrappedDekRecoveryB64: string,
-): SignupRequest {
+): Omit<SignupRequest, 'recoveryVerifier'> {
   const salt = genSalt();
   const params = defaultKdfParams();
   const rootKey = deriveRootKey(newPassphrase, salt, params);
@@ -109,5 +114,40 @@ export function rotatePassphrase(
     authVerifier: toB64(authVerifier),
     wrappedDek: toB64(wrappedDek),
     wrappedDekRecovery: existingWrappedDekRecoveryB64,
+  };
+}
+
+/**
+ * Lost-passphrase reset, authorized by the recovery key. The DEK (recovered via
+ * {@link unlockWithRecoveryKey}) is re-wrapped under a fresh master key; the
+ * recovery key is unchanged, so its wrapping and verifier are re-derived as-is.
+ * `recoveryVerifier` is the proof the server checks before applying — only a
+ * holder of the recovery key can produce it.
+ */
+export function resetWithRecoveryKey(
+  email: string,
+  recoveryKey: string,
+  newPassphrase: string,
+  dek: Uint8Array,
+): SignupRequest {
+  const salt = genSalt();
+  const params = defaultKdfParams();
+  const rootKey = deriveRootKey(newPassphrase, salt, params);
+  const masterKey = deriveMasterKey(rootKey);
+  const authVerifier = deriveAuthVerifier(rootKey);
+  const wrappedDek = wrapKey(dek, masterKey);
+
+  const recoveryKeyBytes = recoveryKeyToBytes(recoveryKey);
+  const wrappedDekRecovery = wrapKey(dek, recoveryKeyBytes);
+  const recoveryVerifier = deriveRecoveryVerifier(recoveryKeyBytes);
+
+  return {
+    email,
+    kdfSalt: toB64(salt),
+    kdfParams: params,
+    authVerifier: toB64(authVerifier),
+    recoveryVerifier: toB64(recoveryVerifier),
+    wrappedDek: toB64(wrappedDek),
+    wrappedDekRecovery: toB64(wrappedDekRecovery),
   };
 }

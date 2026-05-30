@@ -70,7 +70,7 @@ async function main() {
   const sync = new SyncClient({
     doc,
     dek,
-    token: 'tok',
+    getTicket: async () => 'tok',
     docId: DEFAULT_DOC_ID,
     clientId: 'c1',
     loadCursor: async () => 0,

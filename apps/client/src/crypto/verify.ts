@@ -7,7 +7,14 @@
  * recovery-key unlock, and passphrase rotation.
  */
 import { initCrypto, getSodium, fromB64, toB64 } from './sodium';
-import { registerAccount, deriveLoginCredentials, unwrapDek, unlockWithRecoveryKey, rotatePassphrase } from './account';
+import {
+  registerAccount,
+  deriveLoginCredentials,
+  unwrapDek,
+  unlockWithRecoveryKey,
+  rotatePassphrase,
+  resetWithRecoveryKey,
+} from './account';
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(`FAIL: ${msg}`);
@@ -38,6 +45,7 @@ async function main() {
     kdfSalt: reg.payload.kdfSalt,
     kdfParams: reg.payload.kdfParams,
     authVerifierHash: toB64(s.crypto_generichash(32, fromB64(reg.payload.authVerifier), null)),
+    recoveryVerifierHash: toB64(s.crypto_generichash(32, fromB64(reg.payload.recoveryVerifier), null)),
     wrappedDek: reg.payload.wrappedDek,
     wrappedDekRecovery: reg.payload.wrappedDekRecovery,
   };
@@ -69,6 +77,24 @@ async function main() {
   console.log('\n[recovery key]');
   const dekFromRecovery = unlockWithRecoveryKey(reg.recoveryKey, server.wrappedDekRecovery);
   assert(bytesEqual(dekFromRecovery, reg.keys.dek), 'DEK recovered via recovery key equals original');
+
+  // --- Reset authorized by proof-of-recovery-key ---
+  console.log('\n[reset proof-of-recovery-key]');
+  const resetReq = resetWithRecoveryKey(email, reg.recoveryKey, 'recovered passphrase', dekFromRecovery);
+  const resetProofHash = toB64(s.crypto_generichash(32, fromB64(resetReq.recoveryVerifier), null));
+  assert(resetProofHash === server.recoveryVerifierHash, 'reset carries a recovery verifier the server can authorize');
+  // A wrong recovery key produces a non-matching proof, so the server rejects it.
+  const wrongRk = toB64(s.randombytes_buf(32));
+  const forged = resetWithRecoveryKey(email, wrongRk, 'attacker passphrase', reg.keys.dek);
+  const forgedHash = toB64(s.crypto_generichash(32, fromB64(forged.recoveryVerifier), null));
+  assert(forgedHash !== server.recoveryVerifierHash, 'a wrong recovery key cannot authorize a reset');
+  // Applying the authorized reset keeps the DEK decryptable under the new passphrase.
+  server.kdfSalt = resetReq.kdfSalt;
+  server.kdfParams = resetReq.kdfParams;
+  server.authVerifierHash = toB64(s.crypto_generichash(32, fromB64(resetReq.authVerifier), null));
+  server.wrappedDek = resetReq.wrappedDek;
+  const credsAfterReset = deriveLoginCredentials('recovered passphrase', server.kdfSalt, server.kdfParams);
+  assert(bytesEqual(unwrapDek(server.wrappedDek, credsAfterReset.masterKey), reg.keys.dek), 'DEK unwraps under the reset passphrase');
 
   // --- Passphrase rotation ---
   console.log('\n[passphrase rotation]');

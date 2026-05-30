@@ -6,8 +6,10 @@ import { getSodium, toB64, fromB64 } from './sodium';
 // even though both are derived from the same Argon2id root key.
 const MASTER_CTX = 'obscMast';
 const AUTH_CTX = 'obscAuth';
+const RECOVERY_CTX = 'obscReco';
 const MASTER_SUBKEY_ID = 1;
 const AUTH_SUBKEY_ID = 2;
+const RECOVERY_SUBKEY_ID = 3;
 
 /**
  * KDF parameters used for new accounts. The resolved numeric values are stored
@@ -56,6 +58,18 @@ export function deriveMasterKey(rootKey: Uint8Array): Uint8Array {
 export function deriveAuthVerifier(rootKey: Uint8Array): Uint8Array {
   const s = getSodium();
   return s.crypto_kdf_derive_from_key(32, AUTH_SUBKEY_ID, AUTH_CTX, rootKey);
+}
+
+/**
+ * The recovery analogue of the auth verifier: a secret derived from the recovery
+ * key (already a 32-byte high-entropy KDF key) and sent to the server as proof
+ * of recovery-key possession. The server stores only its hash and demands it to
+ * authorize a passphrase reset. A distinct context keeps it cryptographically
+ * independent from the recovery-key *wrapping* of the DEK.
+ */
+export function deriveRecoveryVerifier(recoveryKeyBytes: Uint8Array): Uint8Array {
+  const s = getSodium();
+  return s.crypto_kdf_derive_from_key(32, RECOVERY_SUBKEY_ID, RECOVERY_CTX, recoveryKeyBytes);
 }
 
 /** Fresh random Data Encryption Key — the key that actually encrypts content. */

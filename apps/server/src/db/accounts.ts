@@ -12,6 +12,8 @@ export interface Account {
   kdfSalt: string;
   kdfParams: KdfParams;
   authVerifierHash: string;
+  /** Hash of the recovery verifier; null for accounts predating this field. */
+  recoveryVerifierHash: string | null;
   wrappedDek: string;
   wrappedDekRecovery: string;
 }
@@ -53,6 +55,7 @@ export class PostgresAccountStore implements AccountStore {
       .values({
         email: account.email,
         auth_verifier_hash: account.authVerifierHash,
+        recovery_verifier_hash: account.recoveryVerifierHash,
         kdf_salt: account.kdfSalt,
         // jsonb column: bind a JSON string and cast, so any value (incl. one
         // that looks like a bare SQL token) is stored verbatim.
@@ -75,6 +78,7 @@ export class PostgresAccountStore implements AccountStore {
       kdfSalt: row.kdf_salt,
       kdfParams: row.kdf_params, // jsonb is parsed back to an object by pg
       authVerifierHash: row.auth_verifier_hash,
+      recoveryVerifierHash: row.recovery_verifier_hash,
       wrappedDek: row.wrapped_dek,
       wrappedDekRecovery: row.wrapped_dek_recovery,
     };
@@ -85,6 +89,7 @@ export class PostgresAccountStore implements AccountStore {
     if (patch.kdfSalt !== undefined) set.kdf_salt = patch.kdfSalt;
     if (patch.kdfParams !== undefined) set.kdf_params = sql`${JSON.stringify(patch.kdfParams)}::jsonb`;
     if (patch.authVerifierHash !== undefined) set.auth_verifier_hash = patch.authVerifierHash;
+    if (patch.recoveryVerifierHash !== undefined) set.recovery_verifier_hash = patch.recoveryVerifierHash;
     if (patch.wrappedDek !== undefined) set.wrapped_dek = patch.wrappedDek;
     if (patch.wrappedDekRecovery !== undefined) set.wrapped_dek_recovery = patch.wrappedDekRecovery;
 

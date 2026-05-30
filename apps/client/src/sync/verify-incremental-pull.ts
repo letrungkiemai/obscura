@@ -77,7 +77,7 @@ async function main() {
   const sync = new SyncClient({
     doc,
     dek,
-    token: 'tok',
+    getTicket: async () => 'tok',
     docId: DEFAULT_DOC_ID,
     clientId: 'client-1',
     // Pretend this device already has up to seq 7.

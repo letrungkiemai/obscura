@@ -2,11 +2,13 @@ import { Migrator } from 'kysely';
 import type { Migration, MigrationProvider } from 'kysely';
 import type { DB } from './db.js';
 import * as initial from './migrations/001_initial.js';
+import * as recoveryVerifier from './migrations/002_recovery_verifier.js';
 
 // Static provider (rather than FileMigrationProvider) so it works identically
 // under tsx, compiled dist, and bundlers — no filesystem globbing.
 const migrations: Record<string, Migration> = {
   '001_initial': initial,
+  '002_recovery_verifier': recoveryVerifier,
 };
 
 const provider: MigrationProvider = {

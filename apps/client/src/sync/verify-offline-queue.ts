@@ -69,7 +69,7 @@ async function main() {
   const makeOpts = (doc: Y.Doc) => ({
     doc,
     dek,
-    token: 'tok',
+    getTicket: async () => 'tok',
     docId: DEFAULT_DOC_ID,
     clientId: 'client-1',
     loadCursor: async () => (store.get('cursor') as number) ?? 0,

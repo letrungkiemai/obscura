@@ -25,6 +25,7 @@ function account(email: string): Account {
     kdfSalt: b64(16),
     kdfParams: { opsLimit: 2, memLimit: 67108864, algorithm: 2 },
     authVerifierHash: b64(),
+    recoveryVerifierHash: b64(),
     wrappedDek: b64(),
     wrappedDekRecovery: b64(),
   };
@@ -54,6 +55,7 @@ async function main() {
     const found = await accounts.findByEmail('alice@example.com');
     assert(found !== null, 'alice found');
     assert(found!.authVerifierHash === alice.authVerifierHash, 'verifier hash round-trips');
+    assert(found!.recoveryVerifierHash === alice.recoveryVerifierHash, 'recovery verifier hash round-trips');
     assert(found!.kdfParams.memLimit === 67108864, 'kdf_params jsonb round-trips as object');
     assert((await accounts.findByEmail('nobody@example.com')) === null, 'unknown email → null');
 

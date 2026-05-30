@@ -9,8 +9,13 @@ export interface SyncClientOptions {
   doc: Y.Doc;
   /** The unlocked DEK from the session; used to decrypt incoming updates. */
   dek: Uint8Array;
-  /** Opaque session token, sent in the WS query string to authenticate. */
-  token: string;
+  /**
+   * Mint a fresh single-use ticket for opening the socket. Called on every
+   * (re)connect; the long-lived session token stays in an Authorization header
+   * inside this callback and never touches the WS URL. Returns null when auth
+   * fails (e.g. expired session), in which case we back off and retry.
+   */
+  getTicket: () => Promise<string | null>;
   docId: string;
   /** Identifies this client as the author of its pushes (metadata only). */
   clientId: string;
@@ -105,8 +110,17 @@ export class SyncClient {
       await this.ready; // cursor + outbox loaded before we pull / flush
       if (this.closed || this.ws) return; // state may have changed during await
 
+      // Mint a fresh single-use ticket; only it (not the session token) rides
+      // the URL. If auth fails or the network is down, back off and retry.
+      const ticket = await this.opts.getTicket().catch(() => null);
+      if (this.closed || this.ws) return; // state may have changed during await
+      if (!ticket) {
+        this.scheduleReconnect();
+        return;
+      }
+
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const url = `${proto}://${location.host}/api/sync?token=${encodeURIComponent(this.opts.token)}`;
+      const url = `${proto}://${location.host}/api/sync?ticket=${encodeURIComponent(ticket)}`;
       const ws = new WebSocket(url);
       this.ws = ws;
       this.wire(ws);

@@ -17,6 +17,10 @@ export const SignupRequestSchema = z.object({
   kdfSalt: b64,
   kdfParams: KdfParamsSchema,
   authVerifier: b64, // server stores only a hash of this
+  // Proof-of-recovery-key: derived from the recovery key the way authVerifier is
+  // derived from the passphrase. The server stores only a hash, then demands it
+  // on /reset so only a holder of the recovery key can overwrite credentials.
+  recoveryVerifier: b64,
   wrappedDek: b64, // DEK wrapped with the master key
   wrappedDekRecovery: b64, // DEK wrapped with the recovery key
 });
@@ -43,11 +47,23 @@ export const LoginResponseSchema = z.object({
 });
 export type LoginResponse = z.infer<typeof LoginResponseSchema>;
 
+// A short-lived, single-use credential for opening the sync WebSocket. The
+// long-lived session token is sent in an Authorization header to mint this;
+// only the ephemeral ticket travels in the WS URL, so a leaked URL (logs,
+// history) exposes at most one already-expired, already-consumed ticket.
+export const SyncTicketResponseSchema = z.object({
+  ticket: b64,
+  expiresInMs: z.number().int().positive(),
+});
+export type SyncTicketResponse = z.infer<typeof SyncTicketResponseSchema>;
+
 export const RecoverChallengeResponseSchema = z.object({ wrappedDekRecovery: b64 });
 export type RecoverChallengeResponse = z.infer<typeof RecoverChallengeResponseSchema>;
 
-// Resetting credentials (after passphrase rotation or recovery) resubmits the
-// same shape as signup, keyed by email.
+// Resetting credentials (recovery path) resubmits the same shape as signup. Here
+// `recoveryVerifier` is the authorization PROOF: the server checks it against the
+// stored hash before applying, so a lost-passphrase reset still requires the
+// recovery key. The recovery key itself is unchanged, so the verifier matches.
 export const ResetRequestSchema = SignupRequestSchema;
 export type ResetRequest = z.infer<typeof ResetRequestSchema>;
 

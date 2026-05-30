@@ -75,6 +75,7 @@ async function main() {
         kdfSalt: b64(16),
         kdfParams: { opsLimit: 2, memLimit: 67108864, algorithm: 2 },
         authVerifier,
+        recoveryVerifier: b64(),
         wrappedDek: b64(),
         wrappedDekRecovery: b64(),
       }),
@@ -95,8 +96,17 @@ async function main() {
     assert(typeof sessionToken === 'string' && sessionToken.length > 0, 'got a session token');
 
     // --- WS push, then confirm it persisted to doc_updates ---
-    const wsBase = `ws://localhost:${port}/api/sync?token=${encodeURIComponent(sessionToken)}`;
-    const a1 = await open(wsBase);
+    // Each connection needs a fresh single-use ticket (session token → ticket via
+    // the authenticated mint endpoint; only the ticket rides the WS URL).
+    const openSync = async () => {
+      const r = await fetch(`http://localhost:${port}/api/sync/ticket`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${sessionToken}` },
+      });
+      const { ticket } = (await r.json()) as { ticket: string };
+      return open(`ws://localhost:${port}/api/sync?ticket=${encodeURIComponent(ticket)}`);
+    };
+    const a1 = await openSync();
     const blob = b64(60);
     a1.send(JSON.stringify({ type: 'push', docId: DEFAULT_DOC_ID, encryptedUpdate: blob, originClient: 'devA' }));
     const ack = await next(a1, (m) => m.type === 'ack');
@@ -107,7 +117,7 @@ async function main() {
     assert(stored.rows[0].encrypted_update.toString('base64url') === blob, 'persisted ciphertext matches what was pushed');
 
     // --- a second device pulls it back out of Postgres ---
-    const a2 = await open(wsBase);
+    const a2 = await openSync();
     a2.send(JSON.stringify({ type: 'pull', docId: DEFAULT_DOC_ID, fromSeq: 0 }));
     const pulled = await next(a2, (m) => m.type === 'updates');
     assert(pulled.type === 'updates' && pulled.updates.length === 1, 'pull returns the one update');

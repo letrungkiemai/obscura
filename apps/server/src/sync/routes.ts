@@ -5,10 +5,12 @@ import { SyncMessageSchema } from '@obscura/shared';
 import type { SyncMessage } from '@obscura/shared';
 import type { UpdateStore } from '../db/updates.js';
 import type { SyncHub } from './hub.js';
+import type { TicketStore } from './tickets.js';
 
 interface SyncDeps {
   upgradeWebSocket: UpgradeWebSocket;
   sessions: Map<string, string>; // sessionToken → email
+  tickets: TicketStore;
   updates: UpdateStore;
   hub: SyncHub;
 }
@@ -29,17 +31,28 @@ function send(ws: WSContext, message: SyncMessage): void {
  *             updates it now covers.
  */
 export function registerSyncRoutes(app: Hono, deps: SyncDeps): void {
-  const { upgradeWebSocket, sessions, updates, hub } = deps;
+  const { upgradeWebSocket, sessions, tickets, updates, hub } = deps;
+
+  // Mint a short-lived, single-use ticket for opening the sync socket. The
+  // long-lived session token authenticates this request via the Authorization
+  // header (never a URL), and only the ephemeral ticket then rides the WS URL.
+  app.post('/api/sync/ticket', (c) => {
+    const auth = c.req.header('authorization') ?? '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    const email = sessions.get(token) ?? null;
+    if (!email) return c.json({ error: 'unauthorized' }, 401);
+    return c.json(tickets.issue(email));
+  });
 
   app.get(
     '/api/sync',
     upgradeWebSocket((c) => {
-      // Authenticate the channel up front. Browsers can't set headers on a
-      // WebSocket handshake, so the session token rides in the query string.
-      // (Phase 7: tokens in URLs can leak via logs — move to a subprotocol or
-      // a short-lived ticket before shipping.)
-      const token = c.req.query('token') ?? '';
-      const email = sessions.get(token) ?? null;
+      // Authenticate the channel up front. Browsers can't set headers on a WS
+      // handshake, so the opening credential must ride in the query string — we
+      // use a single-use, seconds-long ticket (minted above) rather than the
+      // session token, so a URL leaked via logs/history exposes nothing usable.
+      const ticket = c.req.query('ticket') ?? '';
+      const email = tickets.consume(ticket);
 
       if (!email) {
         return {

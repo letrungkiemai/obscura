@@ -66,7 +66,7 @@ function silence(ws: WebSocket, ms = 300): Promise<void> {
 const send = (ws: WebSocket, m: SyncMessage) => ws.send(JSON.stringify(m));
 
 async function main() {
-  const { app, injectWebSocket, sessions } = createApp();
+  const { app, injectWebSocket, sessions, tickets } = createApp();
 
   // Seed sessions directly: Alice has two devices; Eve is a different user.
   sessions.set('tok-alice', 'alice@example.com');
@@ -77,18 +77,49 @@ async function main() {
     injectWebSocket(server);
   });
   const base = `ws://localhost:${port}/api/sync`;
+  const httpBase = `http://localhost:${port}`;
 
-  // --- auth: a bad token is rejected ---
-  const bad = new WebSocket(`${base}?token=nope`);
+  // --- ticket endpoint: session token (header) → ticket; bad/missing → 401 ---
+  const mintRes = await fetch(`${httpBase}/api/sync/ticket`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer tok-alice' },
+  });
+  assert(mintRes.status === 200, `minting a ticket with a valid token returns 200 (got ${mintRes.status})`);
+
+  const noAuth = await fetch(`${httpBase}/api/sync/ticket`, { method: 'POST' });
+  assert(noAuth.status === 401, `minting without a token returns 401 (got ${noAuth.status})`);
+  const badAuth = await fetch(`${httpBase}/api/sync/ticket`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer nope' },
+  });
+  assert(badAuth.status === 401, `minting with a bad token returns 401 (got ${badAuth.status})`);
+
+  // Open with single-use tickets minted for the given user.
+  const ticketFor = (email: string) => tickets.issue(email).ticket;
+  const openAs = (email: string) => open(`${base}?ticket=${ticketFor(email)}`);
+
+  // --- auth: a bogus ticket is rejected ---
+  const bad = new WebSocket(`${base}?ticket=nope`);
   const closeCode: number = await new Promise((resolve, reject) => {
     bad.once('close', (code) => resolve(code));
     bad.once('error', reject);
   });
   assert(closeCode === 1008, `unauthorized socket closed with 1008 (got ${closeCode})`);
 
+  // --- auth: a ticket is single-use; a second connect with it is rejected ---
+  const reuse = ticketFor('alice@example.com');
+  const used = await open(`${base}?ticket=${reuse}`);
+  const reused = new WebSocket(`${base}?ticket=${reuse}`);
+  const reuseCode: number = await new Promise((resolve, reject) => {
+    reused.once('close', (code) => resolve(code));
+    reused.once('error', reject);
+  });
+  assert(reuseCode === 1008, `a reused ticket is rejected with 1008 (got ${reuseCode})`);
+  used.close();
+
   // --- Alice's two devices connect ---
-  const a1 = await open(`${base}?token=tok-alice`);
-  const a2 = await open(`${base}?token=tok-alice`);
+  const a1 = await openAs('alice@example.com');
+  const a2 = await openAs('alice@example.com');
 
   // device A1 pushes; it should be ack'd with seq 1 and relayed to A2 (not back to A1).
   const u1 = blob();
@@ -114,7 +145,7 @@ async function main() {
   await a1gets2;
 
   // --- incremental pull: a fresh device gets everything after its last seq ---
-  const a3 = await open(`${base}?token=tok-alice`);
+  const a3 = await openAs('alice@example.com');
   send(a3, { type: 'pull', docId: DEFAULT_DOC_ID, fromSeq: 0 });
   const full = await next(a3, (m) => m.type === 'updates');
   assert(full.type === 'updates' && full.updates.length === 2, `pull fromSeq 0 returns 2 updates (got ${full.type === 'updates' ? full.updates.length : '?'})`);
@@ -128,7 +159,7 @@ async function main() {
   assert(partial.type === 'updates' && partial.updates.length === 1 && partial.updates[0].seq === 2, 'pull fromSeq 1 returns only seq 2');
 
   // --- per-user isolation: Eve never sees Alice's data ---
-  const eve = await open(`${base}?token=tok-eve`);
+  const eve = await openAs('eve@example.com');
   const eveSilent = silence(eve, 300);
   send(a1, { type: 'push', docId: DEFAULT_DOC_ID, encryptedUpdate: blob(), originClient: 'A1' });
   await next(a1, (m) => m.type === 'ack'); // Alice's push still works
@@ -139,7 +170,7 @@ async function main() {
   assert(evePull.type === 'updates' && evePull.updates.length === 0, 'Eve pull returns empty (her own namespace)');
 
   for (const ws of [a1, a2, a3, eve]) ws.close();
-  console.log('OK — auth, ack/seq, cross-device relay, ordered incremental pull, and per-user isolation all verified.');
+  console.log('OK — ticket auth (mint/single-use/reject), ack/seq, cross-device relay, ordered incremental pull, and per-user isolation all verified.');
   process.exit(0);
 }
 

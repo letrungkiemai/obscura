@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { encryptLocalUpdates } from '../doc/encryptedUpdates';
 import { SyncClient } from './syncClient';
+import { syncTicket } from '../api';
 import type { Session } from '../auth/flows';
 
 export interface SyncedDoc {
@@ -42,7 +43,7 @@ export function useSyncedDoc(session: Session, docId: string, dbKey: string): Sy
     const sync = new SyncClient({
       doc: note.doc,
       dek: session.dek,
-      token: session.sessionToken,
+      getTicket: () => syncTicket(session.sessionToken),
       docId,
       clientId: crypto.randomUUID(),
       loadCursor: async () => {
