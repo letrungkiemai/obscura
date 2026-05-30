@@ -13,8 +13,16 @@ export interface SyncClientOptions {
   docId: string;
   /** Identifies this client as the author of its pushes (metadata only). */
   clientId: string;
-  /** Namespaces the persisted last-seq cursor (e.g. user email). */
-  cursorNamespace: string;
+  /**
+   * Read the last seq this client has applied. Must be persisted in the SAME
+   * storage as the Yjs doc (its IndexedDB) so the two share one lifecycle — if
+   * the local doc is wiped the cursor goes with it, forcing a full re-pull
+   * rather than silently skipping updates the doc no longer has. Returns 0 when
+   * absent (pull everything).
+   */
+  loadCursor: () => Promise<number>;
+  /** Persist the new high-water mark next to the doc. */
+  saveCursor: (seq: number) => void;
   onStatus?: (connected: boolean) => void;
 }
 
@@ -28,39 +36,53 @@ export interface SyncClientOptions {
 export class SyncClient {
   private ws: WebSocket | null = null;
   private closed = false;
+  private connecting = false;
   /** Encrypted-update JSON messages queued while the socket is down. */
   private outbox: string[] = [];
-  private lastSeq: number;
+  /** Last seq applied. Loaded from persistent storage on first connect. */
+  private lastSeq = 0;
+  private cursorLoaded = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelayMs = 1000;
 
-  constructor(private readonly opts: SyncClientOptions) {
-    this.lastSeq = this.readCursor();
-  }
+  constructor(private readonly opts: SyncClientOptions) {}
 
-  // --- last-seq cursor (incremental pull across reloads) ---
-  private get cursorKey(): string {
-    return `obscura:lastseq:${this.opts.cursorNamespace}:${this.opts.docId}`;
-  }
-  private readCursor(): number {
-    const raw = localStorage.getItem(this.cursorKey);
-    const n = raw ? Number(raw) : 0;
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  }
   private advanceCursor(seq: number): void {
     if (seq <= this.lastSeq) return;
     this.lastSeq = seq;
-    localStorage.setItem(this.cursorKey, String(seq));
+    // A late async write that lands out of order could at worst persist a lower
+    // value, causing one redundant re-pull on reconnect (Yjs dedups) — never a
+    // gap, because any seq we skip is one we authored and already hold locally.
+    this.opts.saveCursor(this.lastSeq);
   }
 
-  connect(): void {
-    if (this.closed || this.ws) return;
+  async connect(): Promise<void> {
+    if (this.closed || this.ws || this.connecting) return;
+    this.connecting = true;
+    try {
+      // Load the persisted cursor once, before the first pull, so we ask only
+      // for what we're missing. Reconnects reuse the in-memory value.
+      if (!this.cursorLoaded) {
+        try {
+          this.lastSeq = await this.opts.loadCursor();
+        } catch {
+          this.lastSeq = 0; // unreadable cursor → safe full pull
+        }
+        this.cursorLoaded = true;
+      }
+      if (this.closed || this.ws) return; // state may have changed during await
 
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${proto}://${location.host}/api/sync?token=${encodeURIComponent(this.opts.token)}`;
-    const ws = new WebSocket(url);
-    this.ws = ws;
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const url = `${proto}://${location.host}/api/sync?token=${encodeURIComponent(this.opts.token)}`;
+      const ws = new WebSocket(url);
+      this.ws = ws;
+      this.wire(ws);
+    } finally {
+      this.connecting = false;
+    }
+  }
 
+  private wire(ws: WebSocket): void {
     ws.onopen = () => {
       this.reconnectDelayMs = 1000;
       this.opts.onStatus?.(true);
@@ -133,7 +155,7 @@ export class SyncClient {
     if (this.closed || this.reconnectTimer) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect();
+      void this.connect();
     }, this.reconnectDelayMs);
     // Exponential backoff, capped at 15s.
     this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, 15000);

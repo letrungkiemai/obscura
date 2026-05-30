@@ -23,13 +23,24 @@ function Editor({ session, onLogout }: { session: Session; onLogout: () => void 
     // Encrypted sync. The client streams locally-encrypted updates to the server
     // and applies updates relayed from this user's other devices — the server
     // only ever handles opaque ciphertext.
+    // The incremental-pull cursor lives in the note's OWN IndexedDB (the
+    // 'custom' store y-indexeddb exposes), so it shares the doc's exact storage
+    // lifecycle — wiping local data resets the cursor too, forcing a clean
+    // full re-pull instead of silently skipping updates we no longer have.
+    const cursorKey = `lastSeq:${DEFAULT_DOC_ID}`;
     const sync = new SyncClient({
       doc: note.doc,
       dek: session.dek,
       token: session.sessionToken,
       docId: DEFAULT_DOC_ID,
       clientId: crypto.randomUUID(),
-      cursorNamespace: session.email,
+      loadCursor: async () => {
+        const v = await note.persistence.get(cursorKey);
+        return typeof v === 'number' ? v : 0;
+      },
+      saveCursor: (seq) => {
+        void note.persistence.set(cursorKey, seq);
+      },
       onStatus: setOnline,
     });
 
@@ -46,7 +57,7 @@ function Editor({ session, onLogout }: { session: Session; onLogout: () => void 
     // Load local state first, then connect so the on-connect pull merges on top.
     note.persistence.whenSynced.then(() => {
       setSynced(true);
-      sync.connect();
+      void sync.connect();
     });
 
     return () => {
