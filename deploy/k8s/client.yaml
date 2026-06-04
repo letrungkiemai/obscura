@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: client
+  namespace: obscura
+spec:
+  selector:
+    app: client
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+  namespace: obscura
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: client
+  template:
+    metadata:
+      labels:
+        app: client
+    spec:
+      containers:
+        - name: client
+          # Build & push: docker build -f Dockerfile.client -t <registry>/obscura-client:<tag> .
+          image: puppiesarecute/obscura-client:1.0.2
+          ports:
+            - containerPort: 80
+          env:
+            # nginx proxies /api (incl. the sync WebSocket) here.
+            - name: API_UPSTREAM
+              valueFrom:
+                configMapKeyRef:
+                  name: obscura-config
+                  key: API_UPSTREAM
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi

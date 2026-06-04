@@ -1,0 +1,16 @@
+# Never ship host artifacts into the build context — images install/build fresh.
+**/node_modules
+**/dist
+**/.env
+**/.env.local
+**/*.tsbuildinfo
+.git
+.gitignore
+.DS_Store
+
+# Docs and deploy config aren't needed inside the app images.
+*.md
+deploy
+docker-compose*.yml
+Dockerfile*
+.dockerignore

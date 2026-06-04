@@ -1,0 +1,54 @@
+# Local/production-ish stack: Postgres + server (API/sync) + client (nginx SPA).
+# Copy .env.example → .env and adjust before `docker compose up`.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-obscura}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-obscura}
+      POSTGRES_DB: ${POSTGRES_DB:-obscura}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-obscura} -d ${POSTGRES_DB:-obscura}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-obscura}:${POSTGRES_PASSWORD:-obscura}@db:5432/${POSTGRES_DB:-obscura}
+      # Must match the origin the browser loads the client from (CORS).
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:8080}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    init: true
+    restart: unless-stopped
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    environment:
+      # nginx proxy target for /api (resolved via compose DNS).
+      API_UPSTREAM: server:3000
+    ports:
+      - "${CLIENT_PORT:-8080}:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  pgdata:

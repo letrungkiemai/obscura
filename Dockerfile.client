@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1
+#
+# Client image: builds the Vite SPA and serves it with nginx. nginx also
+# reverse-proxies /api (HTTP + the /api/sync WebSocket) to the server, so the
+# browser only ever talks to a single origin — which is what the client assumes
+# (relative `/api` fetches; WS URL built from `location.host`).
+
+# ---- build: compile shared (for types) + build the SPA bundle ---------------
+FROM node:22-alpine AS build
+WORKDIR /app
+
+COPY package.json yarn.lock tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY apps/server/package.json apps/server/
+COPY apps/client/package.json apps/client/
+RUN yarn install --frozen-lockfile
+
+COPY packages/shared packages/shared
+COPY apps/client apps/client
+
+# `tsc -b` in the client references packages/shared, so build shared first.
+RUN yarn workspace @obscura/shared build \
+ && yarn workspace @obscura/client build
+
+# ---- runtime: static files behind nginx -------------------------------------
+FROM nginx:1.27-alpine AS runtime
+
+# The official image runs envsubst over *.template at startup, injecting
+# ${API_UPSTREAM} (default set below; override in K8s).
+ENV API_UPSTREAM=server:3000
+COPY apps/client/nginx.conf /etc/nginx/templates/default.conf.template
+COPY --from=build /app/apps/client/dist /usr/share/nginx/html
+
+EXPOSE 80

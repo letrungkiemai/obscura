@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: obscura-config
+  namespace: obscura
+data:
+  POSTGRES_USER: obscura
+  POSTGRES_DB: obscura
+  # The public origin the browser loads the app from (CORS). Match your Ingress host.
+  CLIENT_ORIGIN: https://ltka.org
+  # nginx proxy target for /api inside the cluster (the server Service).
+  API_UPSTREAM: server:3000

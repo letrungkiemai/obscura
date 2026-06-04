@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: obscura
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  # secret.yaml is intentionally NOT listed — create it out-of-band from
+  # secret.example.yaml (or `kubectl create secret`) so secrets stay out of git.
+  - postgres.yaml
+  - server.yaml
+  - client.yaml
+  - ingress.yaml
+
+# Pin image tags here at deploy time instead of editing the manifests:
+#   kustomize edit set image obscura-server=<registry>/obscura-server:<tag>
+images:
+  - name: obscura-server
+    newName: obscura-server
+    newTag: latest
+  - name: obscura-client
+    newName: obscura-client
+    newTag: latest

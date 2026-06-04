@@ -1,0 +1,41 @@
+# Let's Encrypt ClusterIssuers for cert-manager. Apply AFTER cert-manager is
+# installed (its CRDs must exist first), so this is NOT in kustomization.yaml.
+#
+# Two issuers:
+#   - letsencrypt-staging: untrusted certs, very high rate limits — use to debug
+#     the ACME flow without burning the prod quota.
+#   - letsencrypt-prod: real trusted certs (the Ingress references this one).
+#
+# HTTP-01 challenge: cert-manager spins up a temporary solver Ingress that
+# ingress-nginx serves on port 80 at /.well-known/acme-challenge/… (not
+# redirected to HTTPS). Let's Encrypt must be able to reach http://ltka.org/…
+# directly, so the Cloudflare proxy must be OFF (grey cloud / DNS-only).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: l.trung.k.ai@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: l.trung.k.ai@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx

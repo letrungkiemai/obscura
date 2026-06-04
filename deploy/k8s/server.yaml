@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: server
+  namespace: obscura
+spec:
+  selector:
+    app: server
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+  namespace: obscura
+spec:
+  # Single replica keeps boot-time migrations simple. The Kysely migrator locks,
+  # so scaling up is safe, but run migrations as a Job first if you prefer.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: server
+  template:
+    metadata:
+      labels:
+        app: server
+    spec:
+      containers:
+        - name: server
+          # Build & push: docker build -f Dockerfile.server -t <registry>/obscura-server:<tag> .
+          image: puppiesarecute/obscura-server:1.0.2
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: obscura-secrets
+                  key: DATABASE_URL
+            - name: CLIENT_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: obscura-config
+                  key: CLIENT_ORIGIN
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi

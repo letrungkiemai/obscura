@@ -1,0 +1,36 @@
+# Routes the public host to the client. The client's nginx serves the SPA and
+# reverse-proxies /api (incl. the /api/sync WebSocket) to the server Service,
+# so a single backend keeps everything same-origin — the same path the app uses
+# under docker-compose. TLS is terminated here; the server emits HSTS off the
+# forwarded X-Forwarded-Proto.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: obscura
+  namespace: obscura
+  annotations:
+    # nginx-ingress passes through WebSocket upgrades by default. Bump the
+    # proxy read timeout so long-lived sync sockets aren't reaped.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # cert-manager issues the obscura-tls cert via Let's Encrypt (HTTP-01).
+    # Requires ltka.org to resolve directly to the ingress IP (Cloudflare proxy
+    # OFF / grey cloud) so the ACME challenge reaches this origin.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ltka.org
+      secretName: obscura-tls
+  rules:
+    - host: ltka.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: client
+                port:
+                  number: 80
